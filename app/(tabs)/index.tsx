@@ -1,98 +1,162 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Session } from '@supabase/supabase-js';
+import { Redirect, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { supabase } from '../../lib/supabase';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [username, setUsername] = useState<string>('');
+  const [hero, setHero] = useState<string>('');
+  const router = useRouter();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      setLoading(false);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      setLoading(false);
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function fetchProfile(userId: string) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('username, selected_hero')
+      .eq('id', userId)
+      .single();
+
+    if (data) {
+      if (data.username) setUsername(data.username);
+      if (data.selected_hero) setHero(data.selected_hero);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#FF3B30" />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return <Redirect href="/login" />;
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>SPIDEY TRACKER</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>USUARIO:</Text>
+        <Text style={styles.value}>{username || session.user.email}</Text>
+
+        <Text style={styles.label}>HÉROE ELEGIDO:</Text>
+        <Text style={styles.heroValue}>{hero || 'Sin seleccionar'}</Text>
+      </View>
+
+      <TouchableOpacity 
+        style={styles.heroButton}
+        onPress={() => router.push('/select-hero')}
+      >
+        <Text style={styles.buttonText}>CAMBIAR DE HÉROE</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.profileButton}
+        onPress={() => router.push('/profile')}
+      >
+        <Text style={styles.buttonText}>EDITAR NOMBRE DE USUARIO</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={styles.logoutButton}
+        onPress={() => supabase.auth.signOut()}
+      >
+        <Text style={styles.buttonText}>CERRAR SESIÓN</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    backgroundColor: '#121212',
+    padding: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  title: {
+    color: '#FF3B30',
+    fontSize: 28,
+    fontWeight: '900',
+    marginBottom: 20,
+    letterSpacing: 2,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  card: {
+    backgroundColor: '#1E1E1E',
+    padding: 20,
+    borderRadius: 12,
+    width: '100%',
+    marginBottom: 25,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  label: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 8,
+  },
+  value: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  heroValue: {
+    color: '#FF3B30',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  heroButton: {
+    backgroundColor: '#FF3B30',
+    padding: 14,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  profileButton: {
+    backgroundColor: '#0A84FF',
+    padding: 14,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  logoutButton: {
+    backgroundColor: '#333',
+    padding: 14,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#FFF',
+    fontWeight: '900',
+    letterSpacing: 1,
   },
 });
